@@ -23,14 +23,30 @@ import numpy as np
 WRIST = 0
 THUMB_TIP = 4
 INDEX_MCP, INDEX_TIP = 5, 8
-MIDDLE_MCP = 9
-RING_MCP = 13
-PINKY_MCP = 17
+MIDDLE_MCP, MIDDLE_TIP = 9, 12
+RING_MCP, RING_TIP = 13, 16
+PINKY_MCP, PINKY_TIP = 17, 20
 N_LANDMARKS = 21
 
 PALM_LANDMARKS = (WRIST, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP)
 KNUCKLE_AXIS = (INDEX_MCP, PINKY_MCP)  # rolls with the wrist; drives jaw azimuth
 POINTING_AXIS = (WRIST, MIDDLE_MCP)  # direction the hand points
+
+#: Camera axes are (right, down, forward). Which robot axis each maps to is
+#: decided by what the operator sees and does, and the correct map is a
+#: MIRROR (determinant -1), not a rotation: the camera faces the operator
+#: (reversing rotation sense once) and the preview is mirrored (reversing it
+#: again), and those two cancel, so hand-right maps to robot-right,
+#: hand-down to robot-down, and hand-towards-the-camera to robot-away, all
+#: at once, only under a determinant -1 map. Shared by retarget.py (the
+#: palm's position) and hand_retarget.py (each fingertip's).
+CAMERA_TO_ROBOT = np.array(
+    [
+        [0.0, 0.0, 1.0],   # camera forward (towards operator) -> robot +x
+        [1.0, 0.0, 0.0],   # camera right                      -> robot +y
+        [0.0, -1.0, 0.0],  # camera down                       -> robot -z
+    ]
+)
 
 
 def unit(v: np.ndarray) -> np.ndarray:

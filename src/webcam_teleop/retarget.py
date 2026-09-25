@@ -24,7 +24,7 @@ import numpy as np
 
 from webcam_teleop.config import HandConfig, WorkspaceBox
 from webcam_teleop.filters import AngleFilter, OneEuroFilter
-from webcam_teleop.hand_pose import HandPose
+from webcam_teleop.hand_pose import CAMERA_TO_ROBOT, HandPose
 
 
 def wrap_to_half_turn(angle: float) -> float:
@@ -44,15 +44,9 @@ class GripperCommand:
 class HandToGripper:
     """Stateful hand-to-gripper retargeter with a clutch and smoothing."""
 
-    # Camera axes are (right, down, forward). See module docstring for why
+    # See hand_pose.CAMERA_TO_ROBOT and the module docstring above for why
     # this is a mirror rather than a rotation.
-    CAMERA_TO_ROBOT = np.array(
-        [
-            [0.0, 0.0, 1.0],   # camera forward (towards operator) -> robot +x
-            [1.0, 0.0, 0.0],   # camera right                      -> robot +y
-            [0.0, -1.0, 0.0],  # camera down                       -> robot -z
-        ]
-    )
+    CAMERA_TO_ROBOT = CAMERA_TO_ROBOT
 
     def __init__(self, hand_config: HandConfig | None = None, workspace: WorkspaceBox | None = None) -> None:
         self.hand = hand_config or HandConfig()
