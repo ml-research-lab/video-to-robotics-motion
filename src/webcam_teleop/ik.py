@@ -1,11 +1,15 @@
-"""Differential inverse kinematics for the SO-101 arm.
+"""Differential inverse kinematics over one or more frame targets.
 
-Runs on the arm-only MJCF (so101.xml), not the full scene, so there are no
-extra free joints for the solver to "solve" by moving something else. The
-SO-101 has five joints before the gripper, so an arbitrary 6-DoF pose is
-generally unreachable; the orientation cost is kept below the position cost
-so when the two conflict the gripper goes where it was asked and tilts as
-close as it can.
+Runs on a bare robot-only model (no scene, no ball), so there are no extra
+free joints for the solver to "solve" by moving something else. Used two
+ways:
+
+* an arm's gripper site: one frame task, position weighted above orientation
+  so when the two conflict the gripper goes where it was asked and tilts as
+  close as it can; the gripper's own joint(s) are frozen out since the
+  caller commands those directly.
+* a hand's fingertips: one frame task per tracked finger, position only
+  (orientation_cost=0), nothing frozen -- every joint is solved for.
 """
 
 from __future__ import annotations
@@ -18,11 +22,6 @@ import mujoco
 import numpy as np
 
 from webcam_teleop.config import IKConfig
-from webcam_teleop.paths import SO101_ARM_XML
-
-TCP_SITE = "gripperframe"
-N_ARM_JOINTS = 5  # shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll
-GRIPPER_JOINT_INDEX = 5
 
 
 def _orthonormalize(rot: np.ndarray) -> np.ndarray:
@@ -32,6 +31,28 @@ def _orthonormalize(rot: np.ndarray) -> np.ndarray:
         u[:, -1] *= -1
         r = u @ vt
     return r
+
+
+def ctrl_from_qpos(model: mujoco.MjModel, qpos: np.ndarray, tendon_actuators: dict[str, tuple[str, ...]]) -> np.ndarray:
+    """Actuator ctrl vector that would hold the joints at ``qpos``.
+
+    For an ordinary position actuator (one joint each) this is just that
+    joint's angle. Some hands drive a *tendon* spanning several joints from
+    one actuator (Shadow Hand's coupled distal joints) -- ``tendon_actuators``
+    names, for each such actuator, the joints summing into it, and the ctrl
+    is that sum. Everything else in ``qpos`` beyond what an actuator reaches
+    (an unactuated coupled joint, pulled along by its own equality
+    constraint) needs no ctrl at all.
+    """
+    ctrl = np.zeros(model.nu)
+    for i in range(model.nu):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
+        if model.actuator_trntype[i] == mujoco.mjtTrn.mjTRN_JOINT:
+            joint_id = model.actuator_trnid[i][0]
+            ctrl[i] = qpos[model.jnt_qposadr[joint_id]]
+        elif name in tendon_actuators:
+            ctrl[i] = sum(qpos[model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j)]] for j in tendon_actuators[name])
+    return ctrl
 
 
 def top_down_frame(jaw_azimuth: float) -> np.ndarray:
@@ -45,59 +66,72 @@ def top_down_frame(jaw_azimuth: float) -> np.ndarray:
 
 
 @dataclass(frozen=True)
+class FrameTarget:
+    name: str
+    frame_type: str  # "site" | "body"
+    position_cost: float = 1.0
+    orientation_cost: float = 0.0
+
+
+@dataclass(frozen=True)
 class IKResult:
-    q: np.ndarray  # 5 arm joint angles, radians
-    position_error: float
+    q: np.ndarray  # solved angles for the controlled joints, radians
+    position_error: float  # of the first frame target
     orientation_error: float
     ok: bool
 
 
-class ArmIK:
-    """Warm-started differential IK for the SO-101 gripper site."""
+class MultiFrameIK:
+    """Warm-started differential IK over a fixed list of frame targets."""
 
-    def __init__(self, config: IKConfig | None = None) -> None:
+    def __init__(self, model: mujoco.MjModel, frames: list[FrameTarget], n_controlled: int, config: IKConfig | None = None) -> None:
         self.config = config or IKConfig()
-        self.model = mujoco.MjModel.from_xml_path(str(SO101_ARM_XML))
-        self.data = mujoco.MjData(self.model)
-        self._site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, TCP_SITE)
-        if self._site_id < 0:
-            raise RuntimeError(f"site {TCP_SITE!r} not found in {SO101_ARM_XML}")
+        self.model = model
+        self.n_controlled = n_controlled
 
-        self._configuration = mink.Configuration(self.model)
-        self._frame_task = mink.FrameTask(
-            TCP_SITE, "site",
-            position_cost=self.config.position_cost,
-            orientation_cost=self.config.orientation_cost,
-            lm_damping=self.config.lm_damping,
-        )
-        self._posture_task = mink.PostureTask(self.model, cost=self.config.posture_cost)
-        # Freeze the gripper finger DOF: the caller commands it directly, and
-        # leaving it in the optimization lets the solver "reach" by opening
-        # the hand instead of moving the arm.
-        self._freeze_task = mink.DofFreezingTask(self.model, list(range(N_ARM_JOINTS, self.model.nv)), gain=1.0)
-        self._tasks = [self._frame_task, self._posture_task, self._freeze_task]
-        self._limits = [mink.ConfigurationLimit(self.model)]
+        self._configuration = mink.Configuration(model)
+        self._frame_tasks = [
+            mink.FrameTask(
+                f.name, f.frame_type,
+                position_cost=f.position_cost, orientation_cost=f.orientation_cost,
+                lm_damping=self.config.lm_damping,
+            )
+            for f in frames
+        ]
+        self._posture_task = mink.PostureTask(model, cost=self.config.posture_cost)
+        self._tasks = list(self._frame_tasks) + [self._posture_task]
+        if n_controlled < model.nv:
+            # Freeze whatever the caller commands directly (an arm's gripper
+            # finger DOF): leaving it in the optimization lets the solver
+            # "reach" a target by opening the hand instead of moving the arm.
+            self._tasks.append(mink.DofFreezingTask(model, list(range(n_controlled, model.nv)), gain=1.0))
+        self._limits = [mink.ConfigurationLimit(model)]
 
-        joint_range = self.model.jnt_range[:N_ARM_JOINTS]
-        control_range = self.model.actuator_ctrlrange[:N_ARM_JOINTS]
+        joint_range = model.jnt_range[:n_controlled]
+        control_range = model.actuator_ctrlrange[:n_controlled] if model.nu >= n_controlled else joint_range
         self.joint_low = np.maximum(joint_range[:, 0], control_range[:, 0]).copy()
         self.joint_high = np.minimum(joint_range[:, 1], control_range[:, 1]).copy()
 
-    def solve(self, target_position: np.ndarray, target_rotation: np.ndarray, q_init: np.ndarray) -> IKResult:
+    def solve(self, targets: list[tuple[np.ndarray, np.ndarray | None]], q_init: np.ndarray) -> IKResult:
+        """One warm-started solve. ``targets`` matches the ``frames`` list order.
+
+        A target's rotation may be ``None`` when its frame task has zero
+        orientation cost (fingertips): an identity rotation is used as a
+        placeholder since it contributes nothing to the optimization.
+        """
         cfg = self.config
         q_init = np.asarray(q_init, dtype=float)
-        arm = np.clip(q_init[:N_ARM_JOINTS], self.joint_low, self.joint_high)
+        controlled = np.clip(q_init[: self.n_controlled], self.joint_low, self.joint_high)
 
         full = np.zeros(self.model.nq)
-        full[:N_ARM_JOINTS] = arm
+        full[: self.n_controlled] = controlled
         self._configuration.update(full.copy())
         self._posture_task.set_target(full.copy())
 
-        target = mink.SE3.from_rotation_and_translation(
-            mink.SO3.from_matrix(_orthonormalize(target_rotation)),
-            np.asarray(target_position, dtype=float),
-        )
-        self._frame_task.set_target(target)
+        for task, (position, rotation) in zip(self._frame_tasks, targets):
+            rot = np.eye(3) if rotation is None else _orthonormalize(rotation)
+            target = mink.SE3.from_rotation_and_translation(mink.SO3.from_matrix(rot), np.asarray(position, dtype=float))
+            task.set_target(target)
 
         for _ in range(cfg.iterations):
             with warnings.catch_warnings():
@@ -109,13 +143,13 @@ class ArmIK:
                 break
             self._configuration.integrate_inplace(velocity, cfg.integration_dt)
 
-        error = self._frame_task.compute_error(self._configuration)
+        error = self._frame_tasks[0].compute_error(self._configuration)
         position_error = float(np.linalg.norm(error[:3]))
         orientation_error = float(np.linalg.norm(error[3:]))
 
-        solved = np.clip(self._configuration.q[:N_ARM_JOINTS], self.joint_low, self.joint_high)
-        step = np.clip(solved - arm, -cfg.max_joint_step, cfg.max_joint_step)
-        q = np.clip(arm + step, self.joint_low, self.joint_high)
+        solved = np.clip(self._configuration.q[: self.n_controlled], self.joint_low, self.joint_high)
+        step = np.clip(solved - controlled, -cfg.max_joint_step, cfg.max_joint_step)
+        q = np.clip(controlled + step, self.joint_low, self.joint_high)
 
         return IKResult(
             q=q, position_error=position_error, orientation_error=orientation_error,
