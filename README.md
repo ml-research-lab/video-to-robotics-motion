@@ -35,29 +35,48 @@ uv pip install -e .
 .venv/bin/python -m webcam_teleop.teleop
 ```
 
-This opens **one** window: the webcam feed (with hand landmarks) on the left,
-the simulated arm on the right, rendered offscreen by MuJoCo and composited
-into the same OpenCV window. (MuJoCo's own 3D viewer window is deliberately
-not used here: on macOS it requires the `mjpython` launcher, under which
-OpenCV cannot open a window at all, so the two are mutually exclusive — one
-window that always works beats two that fight over the main thread.)
+This opens a [Dear PyGui](https://github.com/hoffstadt/DearPyGui) window: the
+webcam feed (with hand landmarks) and the simulated arm side by side, with
+controls underneath:
 
-Focus that window and use:
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  webcam-teleop                                                    [ ✕ ]   │
+├──────────────────────────────────────┬───────────────────────────────────┤
+│                                        │                                   │
+│           WEBCAM FEED                 │          SIMULATED ARM            │
+│        (hand landmarks drawn          │      (drag to orbit, scroll      │
+│            on top)                    │            to zoom)               │
+│                                        │                                   │
+├──────────────────────────────────────┴───────────────────────────────────┤
+│  clutch released                            no hand in frame              │
+│                                                                             │
+│  Camera: [ 1 ▾ ]     [ Engage Clutch (C) ]  [ Reset View ]  [ Quit (Q) ]  │
+│                                                                             │
+│  Sensitivity: ├─────────●───────────┤                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-- **c** — toggle the clutch (engage/disengage hand tracking; like lifting a
-  mouse — move without dragging the arm, then re-engage where's convenient)
-- **=** / **-** — increase / decrease how far the arm moves per centimetre of
-  hand movement
-- **left-drag** on the sim panel — orbit the camera around the arm
-- **right-drag** on the sim panel, or the scroll wheel — zoom in/out
-- **q** / **Esc** — quit
+- **Camera** dropdown — lists every detected camera index; pick whichever one
+  actually shows you (see the placeholder-camera note below).
+- **Engage/Disengage Clutch** button, or press **c** — like lifting a mouse:
+  disengage to reposition your hand without dragging the arm, then re-engage
+  wherever's convenient.
+- **Sensitivity** slider — how far the arm moves per centimetre of hand
+  movement.
+- **Reset View** — snaps the sim camera back to its default angle.
+- **Quit**, or **q** / **Esc**.
+- **Left-drag** the sim panel to orbit the camera around the arm; **right-drag**
+  or scroll to zoom.
 
-On macOS, the first run will prompt for camera permission; if the camera
-window doesn't open, check System Settings > Privacy & Security > Camera and
+On macOS, the first run will prompt for camera permission; if nothing shows up
+in the webcam panel, check System Settings > Privacy & Security > Camera and
 fully quit/reopen the terminal. If the webcam panel shows a static gear icon
-instead of a real picture, device 0 is a virtual camera, not your built-in
-one — run `scripts/list_cameras.py` and set `WEBCAM_TELEOP_DEVICE=<index>`
-(commonly `1`) to pick the right one.
+instead of a real picture, that camera index is a virtual/placeholder device,
+not your built-in one — try another entry in the **Camera** dropdown (on many
+Macs, device `0` is the placeholder and `1` is the real camera). If you need
+to inspect what each device actually sees before picking, run
+`scripts/list_cameras.py`, which saves a snapshot from each.
 
 A red ball sits on the floor within reach — it's a real physics object (has
 gravity, unlike the translucent green target marker, which just shows where
@@ -94,6 +113,7 @@ src/webcam_teleop/
   retarget.py    clutch + mirror mapping + smoothing -> gripper command
   ik.py          differential IK for the SO-101 (mink)
   sim.py         MuJoCo simulation wrapper
+  ui.py          Dear PyGui window: video panels, camera/clutch/gain controls
   teleop.py      main loop
 assets/so101/    vendored SO-101 MJCF model + meshes, plus our scene.xml
 assets/models/   MediaPipe hand landmarker model (fetched, not committed)
