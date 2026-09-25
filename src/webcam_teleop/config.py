@@ -12,8 +12,15 @@ class HandConfig:
     min_presence_confidence: float = 0.6
     min_tracking_confidence: float = 0.6
     assumed_hfov_deg: float = 65.0
-    depth_min: float = 0.15
-    depth_max: float = 1.2
+    # Wide on purpose: the assumed horizontal FOV above is a guess that can be
+    # off for any given webcam, which biases the depth estimate. Since the
+    # position mapping is relative (anchored at the clutch), absolute depth
+    # accuracy barely matters -- but a too-narrow range here means a real,
+    # trackable hand gets silently rejected as "too close"/"too far" and the
+    # arm never moves. Loose bounds trade that failure for a bit less
+    # protection against wildly bad detections.
+    depth_min: float = 0.08
+    depth_max: float = 2.5
 
     # Position mapping: metres of gripper travel per metre of hand travel.
     position_gain: float = 1.4

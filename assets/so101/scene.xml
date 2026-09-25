@@ -19,14 +19,8 @@
     <light pos="0.3 0 1.2" dir="0 0 -1" directional="true" diffuse="0.7 0.7 0.7"/>
     <geom name="floor" type="plane" size="1 1 0.01" material="groundplane"/>
 
-    <!-- Where the operator's mapped hand target currently is, purely visual: a
-         translucent outline, never mistaken for the solid, graspable ball. -->
-    <body name="target_marker" pos="0.2 0 0.1" mocap="true">
-      <geom type="sphere" size="0.012" rgba="0.3 0.95 0.55 0.35" contype="0" conaffinity="0" group="1"/>
-    </body>
-
     <!-- An actual physical object: has a free joint and gravity, so it can be
-         picked up, carried and dropped, unlike the mocap target marker above. -->
+         picked up, carried and dropped. -->
     <body name="ball" pos="0.22 0 0.0125">
       <freejoint name="ball_free"/>
       <inertial pos="0 0 0" mass="0.02" diaginertia="1.25e-6 1.25e-6 1.25e-6"/>

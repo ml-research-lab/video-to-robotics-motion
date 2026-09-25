@@ -106,7 +106,6 @@ def run(device: int | None = None) -> None:
             if command.engaged:
                 result = ik.solve(command.position, top_down_frame(command.jaw_azimuth), q)
                 q = result.q
-                sim.set_target_marker(command.position)
 
             gripper_target = sim.gripper_target_from_gap(command.jaw_gap)
             sim.set_joint_targets(np.concatenate([q, [gripper_target]]))
@@ -118,7 +117,7 @@ def run(device: int | None = None) -> None:
 
             ui.update_webcam_frame(draw_landmarks(frame_rgb, landmarks))
             ui.update_sim_frame(sim.render())
-            ui.set_status(retargeter.engaged, None if landmarks else tracker.last_rejection)
+            ui.set_status(retargeter.engaged, None if pose is not None else tracker.last_rejection)
             ui.poll()
 
             elapsed = time.perf_counter() - frame_start

@@ -23,7 +23,6 @@ class SO101Sim:
         mujoco.mj_resetDataKeyframe(self.model, self.data, home_id)
         mujoco.mj_forward(self.model, self.data)
         self._site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
-        self._marker_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "target_marker")
         self.substeps = max(1, round((1.0 / 30.0) / self.model.opt.timestep))
         # Offscreen renderer rather than mujoco.viewer's own window: on macOS
         # that window requires the mjpython launcher, under which no other
@@ -48,10 +47,6 @@ class SO101Sim:
     @property
     def site_rotation(self) -> np.ndarray:
         return self.data.site_xmat[self._site_id].reshape(3, 3).copy()
-
-    def set_target_marker(self, position: np.ndarray) -> None:
-        if self._marker_id >= 0:
-            self.data.mocap_pos[self.model.body_mocapid[self._marker_id]] = position
 
     def set_joint_targets(self, q: np.ndarray) -> None:
         """Set actuator position targets (arm joints + gripper), radians."""
