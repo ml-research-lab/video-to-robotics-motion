@@ -15,7 +15,7 @@ import cv2
 import dearpygui.dearpygui as dpg
 import numpy as np
 
-from webcam_teleop.sim import SO101Sim
+from webcam_teleop.sim import RobotSim
 
 
 def list_camera_devices(max_index: int = 6) -> list[int]:
@@ -53,20 +53,24 @@ class UIState:
     gain: float = 1.4
     camera_device: int = 0
     camera_device_changed: bool = False
+    robot_name: str = "so101"
+    robot_changed: bool = False
 
 
 class TeleopUI:
     def __init__(
         self,
-        sim: SO101Sim,
+        sim: RobotSim,
         webcam_size: tuple[int, int],
         sim_size: tuple[int, int],
         camera_devices: list[int],
         initial_device: int,
         initial_gain: float,
+        robot_names: list[str],
+        initial_robot: str,
     ) -> None:
         self.sim = sim
-        self.state = UIState(gain=initial_gain, camera_device=initial_device)
+        self.state = UIState(gain=initial_gain, camera_device=initial_device, robot_name=initial_robot)
         self._webcam_w, self._webcam_h = webcam_size
         self._sim_w, self._sim_h = sim_size
         self._last_mouse: tuple[float, float] | None = None
@@ -103,6 +107,12 @@ class TeleopUI:
                 self._tracking_text = dpg.add_text("", color=(220, 90, 90))
 
             with dpg.group(horizontal=True):
+                dpg.add_text("Robot:")
+                dpg.add_combo(
+                    items=robot_names, default_value=initial_robot, width=140,
+                    callback=self._on_robot_changed,
+                )
+                dpg.add_spacer(width=20)
                 dpg.add_text("Camera:")
                 dpg.add_combo(
                     items=[str(d) for d in camera_devices],
@@ -180,6 +190,11 @@ class TeleopUI:
             self.state.camera_device = device
             self.state.camera_device_changed = True
 
+    def _on_robot_changed(self, _sender, value: str) -> None:
+        if value != self.state.robot_name:
+            self.state.robot_name = value
+            self.state.robot_changed = True
+
     def _on_wheel(self, _sender, delta: int) -> None:
         if dpg.is_item_hovered(self._sim_image):
             self.sim.zoom(1.0 - float(np.sign(delta)) * 0.1)
@@ -212,6 +227,10 @@ class TeleopUI:
             self.sim.orbit(d_azimuth=-dx * 0.3, d_elevation=-dy * 0.3)
         elif dpg.is_mouse_button_down(dpg.mvMouseButton_Right):
             self.sim.zoom(1.0 + dy * 0.005)
+
+    def set_sim(self, sim: RobotSim) -> None:
+        """Rebind after the main loop rebuilds the sim for a new robot."""
+        self.sim = sim
 
     def is_running(self) -> bool:
         return dpg.is_dearpygui_running() and not self.state.quit_requested

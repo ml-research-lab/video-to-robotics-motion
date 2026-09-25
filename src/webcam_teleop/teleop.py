@@ -1,13 +1,15 @@
 """Main loop: webcam -> hand tracking -> retargeting -> IK -> MuJoCo sim.
 
-Run with ``python -m webcam_teleop.teleop [device]``, where ``device`` is an
-optional camera index (e.g. ``1``) -- the same index the UI's own camera
-dropdown lists, useful when the default camera is a placeholder. A window
-opens with the webcam feed (hand landmarks overlaid) and the simulated arm
-side by side, plus controls: a camera picker, a clutch button, a sensitivity
-slider, and reset-view/quit buttons. The clutch can also be toggled with the
-**c** key, and quitting with **q** / **Esc**. Left-drag the sim panel to
-orbit the camera; right-drag or scroll to zoom.
+Run with ``python -m webcam_teleop.teleop [device] [--robot NAME]``, where
+``device`` is an optional camera index (e.g. ``1``) and ``--robot`` picks
+which robot to drive (``so101`` by default; see ``webcam_teleop.robots.ROBOTS``
+for the full list, also shown in the UI's own Robot dropdown -- arms are
+driven by hand position + pinch, dexterous hands finger by finger). A window
+opens with the webcam feed (hand landmarks overlaid) and the simulated robot
+side by side, plus controls: robot and camera pickers, a clutch button, a
+sensitivity slider, and reset-view/quit buttons. The clutch can also be
+toggled with the **c** key, and quitting with **q** / **Esc**. Left-drag the
+sim panel to orbit the camera; right-drag or scroll to zoom.
 """
 
 from __future__ import annotations
@@ -19,11 +21,10 @@ import time
 import cv2
 import numpy as np
 
-from webcam_teleop.config import HandConfig
+from webcam_teleop.controllers import build_controller
 from webcam_teleop.hand_pose import Landmarks
-from webcam_teleop.ik import ArmIK, N_ARM_JOINTS, top_down_frame
-from webcam_teleop.retarget import HandToGripper
-from webcam_teleop.sim import SO101Sim
+from webcam_teleop.robots import ROBOTS, get_robot
+from webcam_teleop.sim import RobotSim
 from webcam_teleop.tracker import HandTracker, Webcam
 from webcam_teleop.ui import TeleopUI, list_camera_devices
 
@@ -45,36 +46,40 @@ def _open_camera(device: int) -> tuple[Webcam, HandTracker]:
     return cam, tracker
 
 
-def _parse_device_arg() -> int | None:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "device", type=int, nargs="?", default=None,
         help="camera device index (e.g. 0, 1, 2); overrides WEBCAM_TELEOP_DEVICE",
     )
-    return parser.parse_args().device
+    parser.add_argument(
+        "--robot", type=str, default=None, choices=sorted(ROBOTS),
+        help="which robot to drive (default: so101)",
+    )
+    return parser.parse_args()
 
 
-def run(device: int | None = None) -> None:
-    sim = SO101Sim()
-    ik = ArmIK()
-    retargeter = HandToGripper(HandConfig())
-    q = sim.joint_positions[:N_ARM_JOINTS].copy()
+def run(device: int | None = None, robot: str | None = None) -> None:
+    spec = get_robot(robot)
+    sim = RobotSim(spec)
+    controller = build_controller(spec)
 
     devices = list_camera_devices() or [0]
     if device is None:
         device = int(os.environ.get("WEBCAM_TELEOP_DEVICE", devices[0]))
-    initial_device = device
-    cam, tracker = _open_camera(initial_device)
+    cam, tracker = _open_camera(device)
 
     ui = TeleopUI(
         sim=sim,
         webcam_size=(cam.width, cam.height),
         sim_size=(sim._renderer.width, sim._renderer.height),
         camera_devices=devices,
-        initial_device=initial_device,
-        initial_gain=retargeter.position_gain,
+        initial_device=device,
+        initial_gain=controller.gain,
+        robot_names=sorted(ROBOTS),
+        initial_robot=spec.name,
     )
-    print(f"Webcam teleop running (camera device {initial_device}).")
+    print(f"Webcam teleop running: robot={spec.name}, camera device {device}.")
 
     frame_period = 1.0 / 30.0
     try:
@@ -87,28 +92,28 @@ def run(device: int | None = None) -> None:
                 cam, tracker = _open_camera(ui.state.camera_device)
                 ui.state.camera_device_changed = False
 
+            if ui.state.robot_changed:
+                spec = get_robot(ui.state.robot_name)
+                sim = RobotSim(spec)
+                controller = build_controller(spec, initial_gain=ui.state.gain)
+                ui.set_sim(sim)
+                ui.state.robot_changed = False
+
             frame_rgb = cam.read()
             if frame_rgb is None:
                 break
             pose, landmarks = tracker.detect(frame_rgb)
+            tracked = pose if spec.kind == "arm" else landmarks
 
-            if retargeter.position_gain != ui.state.gain:
-                retargeter.set_gain(ui.state.gain)
+            if controller.gain != ui.state.gain:
+                controller.set_gain(ui.state.gain)
 
             if ui.state.clutch_toggle_requested:
                 ui.state.clutch_toggle_requested = False
-                if retargeter.engaged:
-                    retargeter.disengage()
-                elif pose is not None:
-                    retargeter.engage(pose, sim.site_position)
+                controller.toggle_clutch(tracked, sim)
 
-            command = retargeter(pose, sim.site_position)
-            if command.engaged:
-                result = ik.solve(command.position, top_down_frame(command.jaw_azimuth), q)
-                q = result.q
-
-            gripper_target = sim.gripper_target_from_gap(command.jaw_gap)
-            sim.set_joint_targets(np.concatenate([q, [gripper_target]]))
+            ctrl = controller.step(tracked, sim)
+            sim.set_ctrl(ctrl)
             sim.step()
 
             if ui.state.reset_view_requested:
@@ -117,7 +122,7 @@ def run(device: int | None = None) -> None:
 
             ui.update_webcam_frame(draw_landmarks(frame_rgb, landmarks))
             ui.update_sim_frame(sim.render())
-            ui.set_status(retargeter.engaged, None if pose is not None else tracker.last_rejection)
+            ui.set_status(controller.engaged, None if tracked is not None else tracker.last_rejection)
             ui.poll()
 
             elapsed = time.perf_counter() - frame_start
@@ -130,4 +135,5 @@ def run(device: int | None = None) -> None:
 
 
 if __name__ == "__main__":
-    run(device=_parse_device_arg())
+    args = _parse_args()
+    run(device=args.device, robot=args.robot)
