@@ -1,15 +1,18 @@
 """Main loop: webcam -> hand tracking -> retargeting -> IK -> MuJoCo sim.
 
-Run with ``python -m webcam_teleop.teleop``. A window opens with the webcam
-feed (hand landmarks overlaid) and the simulated arm side by side, plus
-controls: a camera picker, a clutch button, a sensitivity slider, and
-reset-view/quit buttons. The clutch can also be toggled with the **c** key,
-and quitting with **q** / **Esc**. Left-drag the sim panel to orbit the
-camera; right-drag or scroll to zoom.
+Run with ``python -m webcam_teleop.teleop [device]``, where ``device`` is an
+optional camera index (e.g. ``1``) -- the same index the UI's own camera
+dropdown lists, useful when the default camera is a placeholder. A window
+opens with the webcam feed (hand landmarks overlaid) and the simulated arm
+side by side, plus controls: a camera picker, a clutch button, a sensitivity
+slider, and reset-view/quit buttons. The clutch can also be toggled with the
+**c** key, and quitting with **q** / **Esc**. Left-drag the sim panel to
+orbit the camera; right-drag or scroll to zoom.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import time
 
@@ -42,14 +45,25 @@ def _open_camera(device: int) -> tuple[Webcam, HandTracker]:
     return cam, tracker
 
 
-def run() -> None:
+def _parse_device_arg() -> int | None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "device", type=int, nargs="?", default=None,
+        help="camera device index (e.g. 0, 1, 2); overrides WEBCAM_TELEOP_DEVICE",
+    )
+    return parser.parse_args().device
+
+
+def run(device: int | None = None) -> None:
     sim = SO101Sim()
     ik = ArmIK()
     retargeter = HandToGripper(HandConfig())
     q = sim.joint_positions[:N_ARM_JOINTS].copy()
 
     devices = list_camera_devices() or [0]
-    initial_device = int(os.environ.get("WEBCAM_TELEOP_DEVICE", devices[0]))
+    if device is None:
+        device = int(os.environ.get("WEBCAM_TELEOP_DEVICE", devices[0]))
+    initial_device = device
     cam, tracker = _open_camera(initial_device)
 
     ui = TeleopUI(
@@ -117,4 +131,4 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    run(device=_parse_device_arg())

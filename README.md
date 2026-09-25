@@ -32,8 +32,13 @@ uv pip install -e .
 ## Run
 
 ```bash
-.venv/bin/python -m webcam_teleop.teleop
+.venv/bin/python -m webcam_teleop.teleop        # uses the first detected camera
+.venv/bin/python -m webcam_teleop.teleop 1      # or pick a specific camera index (0, 1, 2, ...)
 ```
+
+The number is a camera device index — the same one the UI's own **Camera**
+dropdown lists, and the same one `scripts/list_cameras.py` reports. You can
+also switch cameras later from the dropdown without restarting.
 
 This opens a [Dear PyGui](https://github.com/hoffstadt/DearPyGui) window: the
 webcam feed (with hand landmarks) and the simulated arm side by side, with
@@ -41,20 +46,20 @@ controls underneath:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  webcam-teleop                                                    [ ✕ ]   │
+│  webcam-teleop                                                   [ ✕ ]   │
 ├──────────────────────────────────────┬───────────────────────────────────┤
-│                                        │                                   │
-│           WEBCAM FEED                 │          SIMULATED ARM            │
-│        (hand landmarks drawn          │      (drag to orbit, scroll      │
-│            on top)                    │            to zoom)               │
-│                                        │                                   │
+│                                      │                                   │
+│           WEBCAM FEED                │           SIMULATED ARM           │
+│        (hand landmarks drawn         │       (drag to orbit, scroll      │
+│            on top)                   │             to zoom)              │
+│                                      │.                                  │
 ├──────────────────────────────────────┴───────────────────────────────────┤
-│  clutch released                            no hand in frame              │
-│                                                                             │
-│  Camera: [ 1 ▾ ]     [ Engage Clutch (C) ]  [ Reset View ]  [ Quit (Q) ]  │
-│                                                                             │
-│  Sensitivity: ├─────────●───────────┤                                     │
-└─────────────────────────────────────────────────────────────────────────┘
+│  clutch released                            no hand in frame             │
+│                                                                          │
+│  Camera: [ 1 ▾ ]     [ Engage Clutch (C) ]  [ Reset View ] [ Quit (Q) ]  │
+│                                                                          │
+│  Sensitivity: ├─────────●───────────┤                                    │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Camera** dropdown — lists every detected camera index; pick whichever one
