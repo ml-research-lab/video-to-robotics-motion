@@ -1,0 +1,44 @@
+<mujoco model="so101_scene">
+  <include file="so101.xml"/>
+
+  <statistic center="0.2 0 0.1" extent="0.5"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.35 0.35 0.35" specular="0.1 0.1 0.1"/>
+    <global azimuth="140" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+      rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.3 0 1.2" dir="0 0 -1" directional="true" diffuse="0.7 0.7 0.7"/>
+    <geom name="floor" type="plane" size="1 1 0.01" material="groundplane"/>
+
+    <!-- Where the operator's mapped hand target currently is, purely visual: a
+         translucent outline, never mistaken for the solid, graspable ball. -->
+    <body name="target_marker" pos="0.2 0 0.1" mocap="true">
+      <geom type="sphere" size="0.012" rgba="0.3 0.95 0.55 0.35" contype="0" conaffinity="0" group="1"/>
+    </body>
+
+    <!-- An actual physical object: has a free joint and gravity, so it can be
+         picked up, carried and dropped, unlike the mocap target marker above. -->
+    <body name="ball" pos="0.22 0 0.0125">
+      <freejoint name="ball_free"/>
+      <inertial pos="0 0 0" mass="0.02" diaginertia="1.25e-6 1.25e-6 1.25e-6"/>
+      <geom name="ball" type="sphere" size="0.0125" rgba="0.85 0.2 0.16 1"
+        friction="1.1 0.02 0.002" condim="4" solref="0.008 1"/>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <!-- Arm folded back and up, gripper open, clear of the desk; ball resting
+         on the floor within reach. -->
+    <key name="home" qpos="0 -1.57 1.57 0.9 0 0.9   0.22 0 0.0125 1 0 0 0"
+         ctrl="0 -1.57 1.57 0.9 0 0.9"/>
+  </keyframe>
+</mujoco>
