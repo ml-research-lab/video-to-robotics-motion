@@ -1,5 +1,9 @@
 # webcam-teleop
 
+<p align="center">
+  <img src="docs/artifacts/move.gif" width="600" alt="Webcam hand tracking controlling the simulated SO-101 arm">
+</p>
+
 Control a simulated [SO-101](https://github.com/TheRobotStudio/SO-ARM100) robot
 arm in MuJoCo by moving your hand in front of a plain laptop webcam. No depth
 camera, no real hardware, no GPU required.
