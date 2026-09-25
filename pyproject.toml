@@ -1,7 +1,7 @@
 [project]
 name = "webcam-teleop"
 version = "0.1.0"
-description = "Webcam hand-tracking teleoperation of a simulated SO-101 robot arm"
+description = "Webcam hand-tracking teleoperation of simulated robot arms and dexterous hands"
 license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -11,6 +11,7 @@ dependencies = [
     "mink>=0.0.4",
     "numpy>=1.26,<2",
     "dearpygui>=1.11,<3",
+    "robot_descriptions>=3.0",
 ]
 
 [build-system]
