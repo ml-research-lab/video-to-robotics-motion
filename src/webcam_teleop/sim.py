@@ -10,6 +10,8 @@ from webcam_teleop.paths import SO101_SCENE_XML
 
 N_JOINTS = N_ARM_JOINTS + 1  # arm joints plus the gripper
 
+_DEFAULT_CAMERA = dict(lookat=(0.2, 0.0, 0.08), distance=0.7, azimuth=140.0, elevation=-20.0)
+
 
 class SO101Sim:
     """Thin wrapper around the SO-101 scene: set targets, step, read state."""
@@ -24,19 +26,16 @@ class SO101Sim:
         self._marker_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "target_marker")
         self.substeps = max(1, round((1.0 / 30.0) / self.model.opt.timestep))
         # Offscreen renderer rather than mujoco.viewer's own window: on macOS
-        # that window requires the mjpython launcher, under which OpenCV
-        # cannot open a window at all -- so the webcam preview and the sim
-        # view are composited into one ordinary OpenCV window instead.
+        # that window requires the mjpython launcher, under which no other
+        # GUI toolkit (OpenCV, Dear PyGui) can also open a window -- so this
+        # is rendered to a plain array and shown as a texture in our own UI.
         self._renderer = mujoco.Renderer(self.model, height=render_height, width=render_width)
 
-        # An orbiting free camera, mouse-driven from the teleop loop, rather
-        # than a fixed camera baked into the XML -- see orbit()/zoom() below.
+        # An orbiting free camera, mouse-driven from the UI, rather than a
+        # fixed camera baked into the XML -- see orbit()/zoom() below.
         self.camera = mujoco.MjvCamera()
         mujoco.mjv_defaultCamera(self.camera)
-        self.camera.lookat = np.array([0.2, 0.0, 0.08])
-        self.camera.distance = 0.7
-        self.camera.azimuth = 140.0
-        self.camera.elevation = -20.0
+        self.reset_camera()
 
     @property
     def joint_positions(self) -> np.ndarray:
@@ -74,6 +73,13 @@ class SO101Sim:
     def zoom(self, factor: float) -> None:
         """Scale the free camera's distance from its look-at point."""
         self.camera.distance = float(np.clip(self.camera.distance * factor, 0.15, 3.0))
+
+    def reset_camera(self) -> None:
+        """Return the free camera to its default angle and distance."""
+        self.camera.lookat = np.array(_DEFAULT_CAMERA["lookat"])
+        self.camera.distance = _DEFAULT_CAMERA["distance"]
+        self.camera.azimuth = _DEFAULT_CAMERA["azimuth"]
+        self.camera.elevation = _DEFAULT_CAMERA["elevation"]
 
     def render(self) -> np.ndarray:
         """RGB render of the scene from the interactive free camera."""

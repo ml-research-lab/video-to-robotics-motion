@@ -132,13 +132,17 @@ class HandToGripper:
         self._robot_anchor = None
         self._engaged = False
 
-    def adjust_gain(self, delta: float) -> float:
-        self.position_gain = float(np.clip(self.position_gain + delta, 0.3, 4.0))
+    def set_gain(self, value: float) -> float:
+        """Set the position gain directly, re-anchoring so the arm does not jump."""
+        self.position_gain = float(np.clip(value, 0.3, 4.0))
         if self._last_hand is not None and self._filtered_position is not None:
             anchor = self._park_point if self._park_point is not None else self._last_hand
             self._hand_anchor = anchor.copy()
             self._robot_anchor = self._filtered_position.copy()
         return self.position_gain
+
+    def adjust_gain(self, delta: float) -> float:
+        return self.set_gain(self.position_gain + delta)
 
     def _clip_workspace(self, p: np.ndarray) -> np.ndarray:
         w = self.workspace
