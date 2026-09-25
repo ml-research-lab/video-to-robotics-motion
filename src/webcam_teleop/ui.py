@@ -90,8 +90,12 @@ class TeleopUI:
 
         with dpg.window(label="webcam-teleop", tag="main_window", no_close=True):
             with dpg.group(horizontal=True):
-                dpg.add_image(self._webcam_tex)
-                self._sim_image = dpg.add_image(self._sim_tex)
+                self._webcam_image = dpg.add_image(
+                    self._webcam_tex, width=self._webcam_w, height=self._webcam_h
+                )
+                self._sim_image = dpg.add_image(
+                    self._sim_tex, width=self._sim_w, height=self._sim_h
+                )
 
             with dpg.group(horizontal=True):
                 self._status_text = dpg.add_text("clutch released", color=(90, 170, 230))
@@ -128,9 +132,33 @@ class TeleopUI:
             dpg.add_key_press_handler(key=dpg.mvKey_Q, callback=self._on_quit)
             dpg.add_key_press_handler(key=dpg.mvKey_Escape, callback=self._on_quit)
 
+        dpg.set_viewport_resize_callback(self._on_viewport_resized)
+
         dpg.setup_dearpygui()
         dpg.show_viewport()
         dpg.set_primary_window("main_window", True)
+
+    # -- layout -----------------------------------------------------------
+
+    #: Reserved for the status/controls rows below the video panels, so they
+    #: are never squeezed out as the window grows taller.
+    _CONTROLS_HEIGHT = 140
+    _MARGIN = 40
+
+    def _on_viewport_resized(self, _sender, app_data) -> None:
+        viewport_w, viewport_h = app_data[2], app_data[3]
+        available_w = max(viewport_w - self._MARGIN, 100)
+        available_h = max(viewport_h - self._CONTROLS_HEIGHT, 100)
+
+        webcam_ratio = self._webcam_w / self._webcam_h
+        sim_ratio = self._sim_w / self._sim_h
+        half_w = available_w / 2
+
+        webcam_h = min(available_h, half_w / webcam_ratio)
+        sim_h = min(available_h, half_w / sim_ratio)
+
+        dpg.configure_item(self._webcam_image, width=int(webcam_h * webcam_ratio), height=int(webcam_h))
+        dpg.configure_item(self._sim_image, width=int(sim_h * sim_ratio), height=int(sim_h))
 
     # -- widget callbacks -----------------------------------------------
 
